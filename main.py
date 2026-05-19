@@ -26,10 +26,17 @@ from envision.model      import TinyConvNet
 from envision.train      import train, get_loaders
 from envision.svd_analysis import analyze_layer, batch_im2col, reconstruction_error, low_rank_approx
 from envision.analytical import AnalyticalNet
+from envision.dataset_analysis import (
+    extract_patches_and_labels, top_patches_per_eigenfilter,
+    per_class_eigenfilter_response, uspace_class_projections,
+    data_svd_comparison, print_dataset_summary,
+)
 from envision.visualize  import (
     plot_filters, plot_eigenfilters, plot_spectrum,
     plot_lowrank_recon, plot_svd_identity,
     plot_relu_subspace, plot_layer_composition,
+    plot_top_patches, plot_class_eigenfilter_heatmap,
+    plot_uspace_scatter, plot_data_vs_weight_svd,
 )
 
 os.makedirs('outputs', exist_ok=True)
@@ -263,6 +270,40 @@ def phase8_plots(W1, U1, s1, Vt1, W2, U2, s2, Vt2,
 
 
 # ============================================================================
+#  PHASE 9  -  Dataset-linked SVD analysis
+# ============================================================================
+
+def phase9_dataset_analysis(model, test_loader, W1, U1, s1, Vt1):
+    BANNER("PHASE 9   -   U / V / Sigma Linked Back to MNIST")
+
+    patches, labels, pre_acts, img_acts, img_labels = \
+        extract_patches_and_labels(test_loader, model, n_images=2000)
+
+    print(f"\n  Extracted {len(patches):,} patches from {len(img_acts):,} test images")
+
+    # 1. Top patches per eigenfilter
+    top = top_patches_per_eigenfilter(patches, Vt1, n_top=6)
+
+    # 2. Per-class eigenfilter response
+    response = per_class_eigenfilter_response(patches, labels, Vt1)
+    print_dataset_summary(response, img_labels)
+
+    # 3. U-space scatter
+    coords, coord_labels = uspace_class_projections(img_acts, img_labels, U1)
+
+    # 4. Data SVD vs weight SVD
+    s_data, Vt_data, alignment = data_svd_comparison(patches, W1)
+
+    # Plots
+    BANNER("PHASE 9   -   Generating Dataset-Linked Figures")
+    print()
+    plot_top_patches(top, Vt1, s1, 'top_patches_eigenfilters.png')
+    plot_class_eigenfilter_heatmap(response, 'class_eigenfilter_heatmap.png')
+    plot_uspace_scatter(coords, coord_labels, 'uspace_class_scatter.png')
+    plot_data_vs_weight_svd(s_data, s1, alignment, 'data_vs_weight_svd.png')
+
+
+# ============================================================================
 #  FINAL SUMMARY
 # ============================================================================
 
@@ -329,4 +370,5 @@ if __name__ == '__main__':
     phase7_composition(anet, patches, acts)
     phase8_plots(W1, U1, s1, Vt1, W2, U2, s2, Vt2,
                  pre, post, coords_pre, coords_post)
+    phase9_dataset_analysis(model, test_loader, W1, U1, s1, Vt1)
     final_summary(s1, s2)

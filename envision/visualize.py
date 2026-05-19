@@ -296,3 +296,186 @@ def plot_layer_composition(s1, s2, filename='layer_composition.png'):
 
     plt.tight_layout()
     return _save(fig, filename)
+
+
+# -- Figure 8: top patches per eigenfilter -----------------------------------
+
+def plot_top_patches(top_patches_dict, Vt, s, filename='top_patches_eigenfilters.png'):
+    """
+    For each eigenfilter v_i, show the top-6 patches with highest positive
+    projection and top-6 with most negative projection.
+    """
+    r      = Vt.shape[0]
+    n_top  = len(top_patches_dict[0]['pos'])
+    k      = int(round(Vt.shape[1] ** 0.5))
+    ncols  = n_top * 2 + 1
+    nrows  = r
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 1.1, nrows * 1.2))
+    if nrows == 1:
+        axes = axes.reshape(1, ncols)
+
+    vmax_ef = np.abs(Vt).max()
+
+    for i in range(r):
+        mid = n_top
+        axes[i, mid].imshow(Vt[i].reshape(k, k), cmap='RdBu_r',
+                            vmin=-vmax_ef, vmax=vmax_ef)
+        axes[i, mid].set_title(f'v{i+1}\nσ={s[i]:.2f}', fontsize=6)
+        axes[i, mid].axis('off')
+
+        pos_patches = top_patches_dict[i]['pos']
+        neg_patches = top_patches_dict[i]['neg']
+        vmax_p = max(np.abs(pos_patches).max(), np.abs(neg_patches).max())
+
+        for j in range(n_top):
+            col = mid - 1 - j
+            axes[i, col].imshow(pos_patches[j].reshape(k, k),
+                                cmap='RdBu_r', vmin=-vmax_p, vmax=vmax_p)
+            axes[i, col].axis('off')
+            if i == 0:
+                axes[i, col].set_title(f'+{j+1}', fontsize=6)
+
+            col = mid + 1 + j
+            axes[i, col].imshow(neg_patches[j].reshape(k, k),
+                                cmap='RdBu_r', vmin=-vmax_p, vmax=vmax_p)
+            axes[i, col].axis('off')
+            if i == 0:
+                axes[i, col].set_title(f'-{j+1}', fontsize=6)
+
+    fig.text(0.18, 1.01, 'High positive activation', ha='center', fontsize=8, color='navy')
+    fig.text(0.50, 1.01, 'Eigenfilter', ha='center', fontsize=8, color='black')
+    fig.text(0.82, 1.01, 'High negative activation', ha='center', fontsize=8, color='crimson')
+    fig.suptitle('MNIST patches that maximally activate each eigenfilter (V rows)',
+                 fontsize=10, y=1.06)
+    plt.tight_layout()
+    return _save(fig, filename)
+
+
+# -- Figure 9: per-class eigenfilter response heatmap -----------------------
+
+def plot_class_eigenfilter_heatmap(response, filename='class_eigenfilter_heatmap.png'):
+    """response : (10, r)  — mean |projection| per class per eigenfilter"""
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5),
+                             gridspec_kw={'width_ratios': [2, 1]})
+
+    ax = axes[0]
+    im = ax.imshow(response, cmap='YlOrRd', aspect='auto')
+    ax.set_xticks(range(response.shape[1]))
+    ax.set_xticklabels([f'v{i+1}' for i in range(response.shape[1])], fontsize=8)
+    ax.set_yticks(range(10))
+    ax.set_yticklabels([str(c) for c in range(10)], fontsize=9)
+    ax.set_xlabel('Eigenfilter  (V row)', fontsize=9)
+    ax.set_ylabel('Digit class', fontsize=9)
+    ax.set_title('Mean |projection| of each digit class\nonto each eigenfilter direction', fontsize=9)
+    plt.colorbar(im, ax=ax, fraction=0.03, pad=0.04, label='mean |Vᵀp|')
+
+    ax2 = axes[1]
+    best_ef = np.argmax(response, axis=1)
+    colors  = plt.cm.tab10(np.linspace(0, 1, 10))
+    ax2.barh(range(10), response[range(10), best_ef],
+             color=colors, edgecolor='k', linewidth=0.5)
+    ax2.set_yticks(range(10))
+    ax2.set_yticklabels([f'digit {c}  →  v{best_ef[c]+1}' for c in range(10)], fontsize=7)
+    ax2.set_xlabel('Response magnitude', fontsize=8)
+    ax2.set_title('Strongest eigenfilter\nper digit class', fontsize=9)
+    ax2.grid(axis='x', alpha=0.3)
+
+    fig.suptitle('How each digit class engages the learned eigenfilters', fontsize=11, y=1.02)
+    plt.tight_layout()
+    return _save(fig, filename)
+
+
+# -- Figure 10: U-space class scatter ----------------------------------------
+
+def plot_uspace_scatter(coords, labels, filename='uspace_class_scatter.png'):
+    """coords : (N, r), labels : (N,)"""
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    cmap   = plt.cm.tab10
+    colors = [cmap(c / 9) for c in range(10)]
+
+    for ax_idx, (d1, d2) in enumerate([(0, 1), (2, 3)]):
+        ax = axes[ax_idx]
+        if coords.shape[1] <= d2:
+            ax.text(0.5, 0.5, 'Not enough dimensions', ha='center', va='center')
+            ax.axis('off')
+            continue
+        for c in range(10):
+            mask = labels == c
+            ax.scatter(coords[mask, d1], coords[mask, d2],
+                       s=6, alpha=0.4, color=colors[c], label=str(c))
+        ax.set_xlabel(f'U col {d1+1}', fontsize=9)
+        ax.set_ylabel(f'U col {d2+1}', fontsize=9)
+        ax.set_title(f'Digits in U-space  (dims {d1+1} & {d2+1})', fontsize=9)
+        ax.grid(alpha=0.2)
+        if ax_idx == 1:
+            ax.legend(title='Digit', fontsize=7, markerscale=2,
+                      loc='upper right', ncol=2)
+
+    fig.suptitle('MNIST test images projected onto Layer-1 left singular vectors (U)\n'
+                 'Each point is one image; colour = digit class', fontsize=10)
+    plt.tight_layout()
+    return _save(fig, filename)
+
+
+# -- Figure 11: data SVD vs weight SVD comparison ----------------------------
+
+def plot_data_vs_weight_svd(s_data, s_W, alignment,
+                             filename='data_vs_weight_svd.png'):
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+    r = len(s_W)
+    x = np.arange(r)
+
+    ax = axes[0]
+    ax.bar(x - 0.2, s_data[:r] / s_data[:r].max(), width=0.35,
+           color='steelblue', alpha=0.85, label='Data SVD (normalised)')
+    ax.bar(x + 0.2, s_W / s_W.max(),               width=0.35,
+           color='darkorange', alpha=0.85, label='Weight SVD (normalised)')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f'{i+1}' for i in x], fontsize=8)
+    ax.set_xlabel('Component index', fontsize=9)
+    ax.set_ylabel('Normalised singular value', fontsize=9)
+    ax.set_title('Singular value profiles:\ndata PCA  vs  learned weights', fontsize=9)
+    ax.legend(fontsize=8)
+    ax.grid(axis='y', alpha=0.3)
+
+    ax = axes[1]
+    bar_colors = ['#2ecc71' if a > 0.7 else '#e67e22' if a > 0.4 else '#e74c3c'
+                  for a in alignment]
+    ax.bar(x, alignment, color=bar_colors, edgecolor='k', linewidth=0.5)
+    ax.axhline(0.7, color='orange', linestyle=':', linewidth=1, label='0.7 threshold')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f'v{i+1}' for i in x], fontsize=8)
+    ax.set_xlabel('Eigenfilter index', fontsize=9)
+    ax.set_ylabel('|cos θ|  (alignment)', fontsize=9)
+    ax.set_title('Alignment between weight eigenfilters\nand data PCA directions', fontsize=9)
+    ax.set_ylim(0, 1.1)
+    ax.legend(fontsize=8)
+    ax.grid(axis='y', alpha=0.3)
+
+    ax = axes[2]
+    ax.axis('off')
+    mean_align = alignment.mean()
+    interp = (
+        "High alignment (green) means the\n"
+        "network's eigenfilter matches the\n"
+        "dominant direction in the data.\n\n"
+        "Low alignment (red) means the\n"
+        "network learned directions the\n"
+        "raw data PCA did not find —\n"
+        "i.e. class-discriminative patterns\n"
+        "that variance alone misses.\n\n"
+        f"Mean alignment: {mean_align:.3f}\n\n"
+        + ("The network closely follows the\ndata's principal components."
+           if mean_align > 0.7 else
+           "The network diverges from PCA —\ndiscrimination > reconstruction.")
+    )
+    ax.text(0.05, 0.95, interp, transform=ax.transAxes,
+            fontsize=8, verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    ax.set_title('Interpretation', fontsize=9)
+
+    fig.suptitle("Do learned eigenfilters match the data's own principal components?",
+                 fontsize=10, y=1.02)
+    plt.tight_layout()
+    return _save(fig, filename)
